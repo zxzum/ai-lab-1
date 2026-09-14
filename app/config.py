@@ -27,7 +27,7 @@ class Settings:
     health_port: int = 8080
     llm_api_key: str = field(default="", repr=False)
     llm_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "google/gemini-2.0-flash-lite-001"
+    llm_model: str = "google/gemini-2.5-flash-lite"
     llm_timeout_seconds: float = 30.0
     max_history_messages: int = 10
     max_history_chars: int = 4000
@@ -132,7 +132,7 @@ class Settings:
             health_port=port("HEALTH_PORT", "8080"),
             llm_api_key=llm_key,
             llm_base_url=llm_url,
-            llm_model=value("LLM_MODEL", "google/gemini-2.0-flash-lite-001"),
+            llm_model=value("LLM_MODEL", "google/gemini-2.5-flash-lite"),
             llm_timeout_seconds=positive_float("LLM_TIMEOUT_SECONDS", "30.0"),
             max_history_messages=positive_int("MAX_HISTORY_MESSAGES", "10"),
             max_history_chars=positive_int("MAX_HISTORY_CHARS", "4000"),
