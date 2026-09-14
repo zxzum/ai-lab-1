@@ -19,7 +19,7 @@ from app.llm.exceptions import (
 )
 from app.llm.prompts import get_system_prompt
 from app.storage.repository import StorageRepository
-from app.utils.text import split_message
+from app.utils.text import markdown_to_telegram_html, split_message
 
 logger = logging.getLogger("app.chat")
 
@@ -106,10 +106,15 @@ async def handle_chat_message(
     await repo.add_message(user_id, "user", message.text, user_settings.mode)
     await repo.add_message(user_id, "assistant", reply_text, user_settings.mode)
 
-    # Отправляем ответ частями, если он превышает лимит Telegram (4096 символов)
-    chunks = split_message(reply_text, max_length=4096)
+    # Отправляем ответ частями с красивым HTML-форматированием (код, жирный, списки)
+    chunks = split_message(reply_text, max_length=4000)
     for chunk in chunks:
-        await message.answer(chunk, parse_mode=None)
+        formatted_chunk = markdown_to_telegram_html(chunk)
+        try:
+            await message.answer(formatted_chunk, parse_mode="HTML")
+        except Exception:
+            # Безопасный fallback: отправляем без parse_mode, если разметка не прошла валидацию
+            await message.answer(chunk, parse_mode=None)
 
 
 def create_chat_router() -> Router:

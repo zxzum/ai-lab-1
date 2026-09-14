@@ -33,7 +33,7 @@ from app.llm.exceptions import (
 )
 from app.llm.prompts import CODE_REVIEW_PROMPT, STUDY_PROMPT
 from app.storage.repository import StorageRepository
-from app.utils.text import split_message
+from app.utils.text import markdown_to_telegram_html, split_message
 
 TOKEN = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk"
 
@@ -521,3 +521,29 @@ def test_missing_llm_api_key_when_required(tmp_path):
     env_file.write_text(f"BOT_TOKEN={TOKEN}\nPOSTGRES_PASSWORD=db\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="LLM_API_KEY"):
         Settings.load(env_file, environ={}, require_llm=True)
+
+
+def test_markdown_to_telegram_html():
+    """Тестирование безопасной конвертации Markdown в HTML для Telegram."""
+    md = (
+        "### Заголовок\n\n"
+        "**Жирный текст** и *курсив*\n"
+        "* Пункт 1\n"
+        "- Пункт 2\n"
+        "`inline_code`\n\n"
+        "```python\nif a > b:\n    return True\n```"
+    )
+    res = markdown_to_telegram_html(md)
+    assert "<b>Заголовок</b>" in res
+    assert "<b>Жирный текст</b>" in res
+    assert "<i>курсив</i>" in res
+    assert "• Пункт 1" in res
+    assert "• Пункт 2" in res
+    assert "<code>inline_code</code>" in res
+    assert '<pre><code class="language-python">if a &gt; b:\n    return True</code></pre>' in res
+
+    # Проверка незакрытого блока кода
+    unclosed = "```python\nprint(1)"
+    fixed = markdown_to_telegram_html(unclosed)
+    assert "<pre><code" in fixed
+    assert "</code></pre>" in fixed
