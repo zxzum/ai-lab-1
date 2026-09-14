@@ -35,6 +35,7 @@ def configure_logging(settings: Settings) -> None:
                 settings.telegram_proxy_url,
                 proxy.password or "",
                 unquote(proxy.password or ""),
+                settings.llm_api_key,
             ]
         )
     )
