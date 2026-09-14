@@ -26,8 +26,8 @@ class Settings:
     log_level: str = "INFO"
     health_port: int = 8080
     llm_api_key: str = field(default="", repr=False)
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4o-mini"
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "google/gemini-2.0-flash-lite-001"
     llm_timeout_seconds: float = 30.0
     max_history_messages: int = 10
     max_history_chars: int = 4000
@@ -114,7 +114,7 @@ class Settings:
         if require_llm and not llm_key:
             raise ConfigError("LLM_API_KEY: укажите API-ключ для обращения к языковой модели.")
 
-        llm_url = value("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        llm_url = value("LLM_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
         if llm_url:
             parsed_url = urlsplit(llm_url)
             if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
@@ -132,7 +132,7 @@ class Settings:
             health_port=port("HEALTH_PORT", "8080"),
             llm_api_key=llm_key,
             llm_base_url=llm_url,
-            llm_model=value("LLM_MODEL", "gpt-4o-mini"),
+            llm_model=value("LLM_MODEL", "google/gemini-2.0-flash-lite-001"),
             llm_timeout_seconds=positive_float("LLM_TIMEOUT_SECONDS", "30.0"),
             max_history_messages=positive_int("MAX_HISTORY_MESSAGES", "10"),
             max_history_chars=positive_int("MAX_HISTORY_CHARS", "4000"),

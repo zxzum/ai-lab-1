@@ -72,6 +72,9 @@ class LLMClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if "openrouter" in self.base_url.lower():
+            headers["HTTP-Referer"] = "https://github.com/LegionerSV/itmo-tg-template"
+            headers["X-Title"] = "ITMO Student AI Assistant"
 
         payload = {
             "model": target_model,
