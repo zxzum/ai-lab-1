@@ -4,6 +4,7 @@ import logging
 
 import asyncpg
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 from aiogram.utils.chat_action import ChatActionSender
 
@@ -106,15 +107,18 @@ async def handle_chat_message(
     await repo.add_message(user_id, "user", message.text, user_settings.mode)
     await repo.add_message(user_id, "assistant", reply_text, user_settings.mode)
 
-    # Отправляем ответ частями с красивым HTML-форматированием (код, жирный, списки)
-    chunks = split_message(reply_text, max_length=4000)
-    for chunk in chunks:
-        formatted_chunk = markdown_to_telegram_html(chunk)
-        try:
-            await message.answer(formatted_chunk, parse_mode="HTML")
-        except Exception:
-            # Безопасный fallback: отправляем без parse_mode, если разметка не прошла валидацию
+    # Разметка может разорваться при разбиении; длинный ответ отправляем как обычный текст.
+    if len(reply_text) > 4000:
+        for chunk in split_message(reply_text):
             await message.answer(chunk, parse_mode=None)
+        return
+
+    formatted_chunk = markdown_to_telegram_html(reply_text)
+    try:
+        await message.answer(formatted_chunk, parse_mode="HTML")
+    except TelegramBadRequest:
+        # Безопасный fallback: отправляем без parse_mode, если разметка не прошла валидацию
+        await message.answer(reply_text, parse_mode=None)
 
 
 def create_chat_router() -> Router:

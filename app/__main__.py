@@ -25,6 +25,7 @@ async def run(settings: Settings) -> None:
         api_key=settings.llm_api_key,
         model=settings.llm_model,
         timeout=settings.llm_timeout_seconds,
+        proxy=settings.llm_proxy_url,
     )
     runner = None
     try:

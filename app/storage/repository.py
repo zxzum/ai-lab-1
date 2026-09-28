@@ -145,7 +145,7 @@ class StorageRepository:
         for row in rows:
             content = row["content"]
             content_len = len(content)
-            if current_chars + content_len > max_chars and selected:
+            if current_chars + content_len > max_chars:
                 # Если добавление сообщения превысит лимит объема, останавливаемся
                 break
             selected.append({"role": row["role"], "content": content})

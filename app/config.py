@@ -29,6 +29,7 @@ class Settings:
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "google/gemini-2.5-flash-lite"
     llm_timeout_seconds: float = 30.0
+    llm_proxy_url: str = field(default="", repr=False)
     max_history_messages: int = 10
     max_history_chars: int = 4000
 
@@ -120,6 +121,27 @@ class Settings:
             if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
                 raise ConfigError("LLM_BASE_URL: укажите корректный URL (http:// или https://).")
 
+        llm_proxy = value("LLM_PROXY_URL")
+        if llm_proxy:
+            try:
+                parsed_llm_proxy = urlsplit(llm_proxy)
+                if (
+                    parsed_llm_proxy.scheme not in {"http", "socks5"}
+                    or not parsed_llm_proxy.hostname
+                    or not parsed_llm_proxy.port
+                    or parsed_llm_proxy.path not in {"", "/"}
+                    or parsed_llm_proxy.query
+                    or parsed_llm_proxy.fragment
+                ):
+                    raise ValueError
+            except ValueError:
+                raise ConfigError(
+                    "LLM_PROXY_URL: нужен http://host:port или socks5://host:port; "
+                    "при необходимости добавьте user:password@."
+                ) from None
+        else:
+            llm_proxy = proxy
+
         return cls(
             bot_token=token,
             postgres_password=password,
@@ -134,6 +156,7 @@ class Settings:
             llm_base_url=llm_url,
             llm_model=value("LLM_MODEL", "google/gemini-2.5-flash-lite"),
             llm_timeout_seconds=positive_float("LLM_TIMEOUT_SECONDS", "30.0"),
+            llm_proxy_url=llm_proxy,
             max_history_messages=positive_int("MAX_HISTORY_MESSAGES", "10"),
             max_history_chars=positive_int("MAX_HISTORY_CHARS", "4000"),
         )

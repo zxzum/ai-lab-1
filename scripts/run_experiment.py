@@ -1,16 +1,12 @@
-"""Скрипт для воспроизводимого проведения эксперимента по влиянию temperature на ответы LLM.
+"""Проводит воспроизводимый эксперимент по влиянию temperature на ответы LLM."""
 
-Выполняет 12 запусков (по 3 для каждого значения temperature: 0.0, 0.3, 0.7, 1.0),
-фиксирует длину ответа, соблюдение формата и вариативность.
-Поддерживает работу с реальным LLM API (через .env) либо симуляцию при отсутствии ключа.
-"""
-
+import argparse
 import asyncio
-import os
+import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
-# Добавляем корень проекта в путь поиска модулей
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import Settings
@@ -20,106 +16,90 @@ from app.llm.prompts import get_system_prompt
 PROMPT_UNDER_TEST = "Объясни, что такое стек и где он применяется в реальном программировании."
 TEMPERATURES = [0.0, 0.3, 0.7, 1.0]
 RUNS_PER_TEMP = 3
+TOP_P = 1.0
+MAX_TOKENS = 1000
 
 
-async def run_experiment() -> None:
-    settings = Settings.load(environ=os.environ)
+def format_ok(text: str) -> bool:
+    return all(marker in text for marker in ("💡", "💻", "⚠️", "❓"))
 
-    # Если API ключ не задан, выводим предупреждение
-    has_real_api = bool(settings.llm_api_key)
-    if not has_real_api:
-        print(
-            "Внимание: LLM_API_KEY не задан в окружении. "
-            "Запуск в демонстрационном режиме симуляции."
-        )
 
-    llm_client = LLMClient(
+async def run_experiment(env_file: str) -> dict:
+    settings = Settings.load(env_file, require_llm=True)
+    client = LLMClient(
         base_url=settings.llm_base_url,
         api_key=settings.llm_api_key,
         model=settings.llm_model,
         timeout=settings.llm_timeout_seconds,
+        proxy=settings.llm_proxy_url,
     )
-
     system_prompt = get_system_prompt("study")
-    results = []
+    results: list[dict] = []
 
-    print("\n" + "=" * 80)
-    print("НАЧАЛО ЭКСПЕРИМЕНТА: Оценка влияния temperature на генерацию")
-    print(f"Модель: {settings.llm_model}")
-    print(f"Запрос: {PROMPT_UNDER_TEST}")
-    print("=" * 80 + "\n")
-
-    run_index = 1
-    for temp in TEMPERATURES:
-        for _attempt in range(1, RUNS_PER_TEMP + 1):
-            # Контекст сбрасывается перед каждым запуском (как при /reset)
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": PROMPT_UNDER_TEST},
-            ]
-
-            if has_real_api:
-                try:
-                    response_text = await llm_client.complete(
-                        messages=messages,
-                        temperature=temp,
-                    )
-                except Exception as exc:
-                    response_text = f"Ошибка: {exc}"
-            else:
-                # Демонстрационный ответ для тестирования отчета
-                response_text = (
-                    f"💡 Стек — это LIFO структура данных (t={temp}).\n"
-                    "💻 Пример на Python: stack = []; stack.append(1); stack.pop()\n"
-                    "⚠️ Ошибка: IndexError при pop из пустого стека.\n"
-                    "❓ Какой вызов функции вернет значение верхушки стека?"
+    try:
+        for temperature in TEMPERATURES:
+            previous_response = None
+            for _attempt in range(1, RUNS_PER_TEMP + 1):
+                response = await client.complete(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": PROMPT_UNDER_TEST},
+                    ],
+                    temperature=temperature,
+                    top_p=TOP_P,
+                    max_tokens=MAX_TOKENS,
                 )
-
-            char_len = len(response_text)
-            has_format = (
-                ("💡" in response_text or "Суть" in response_text)
-                and ("💻" in response_text or "Пример" in response_text)
-                and ("⚠️" in response_text or "Ошибк" in response_text)
-                and ("❓" in response_text or "Вопрос" in response_text)
-            )
-
-            # Наблюдение о вариативности
-            if temp == 0.0:
-                obs = "Максимальная детерминированность, ответы почти идентичны."
-            elif temp == 0.3:
-                obs = "Высокая связность, точные формулировки, минимальные различия."
-            elif temp == 0.7:
-                obs = "Сбалансированное объяснение, разнообразные примеры кода."
-            else:
-                obs = "Высокая вариативность и креативность, разные аналогии."
-
-            results.append(
-                {
-                    "run": run_index,
-                    "temp": temp,
-                    "length": char_len,
-                    "format": "Да" if has_format else "Нет",
-                    "obs": obs,
+                if previous_response is None:
+                    observation = "Первый ответ группы."
+                elif response == previous_response:
+                    observation = "Совпадает с предыдущим ответом группы."
+                else:
+                    observation = "Отличается от предыдущего ответа группы."
+                result = {
+                    "run": len(results) + 1,
+                    "temperature": temperature,
+                    "length": len(response),
+                    "format": format_ok(response),
+                    "observation": observation,
+                    "response": response,
+                    "usage": client.last_usage,
                 }
-            )
-            fmt_str = "Да" if has_format else "Нет"
-            print(
-                f"Запуск #{run_index:02d} | Temp: {temp:.1f} | "
-                f"Длина: {char_len} симв. | Формат: {fmt_str}"
-            )
-            run_index += 1
+                results.append(result)
+                previous_response = response
+                print(
+                    f"Запуск #{result['run']:02d} | Temp: {temperature:.1f} | "
+                    f"Длина: {len(response)} симв. | "
+                    f"Формат: {'Да' if result['format'] else 'Нет'} | {observation}"
+                )
+    finally:
+        await client.close()
 
-    await llm_client.close()
+    experiment = {
+        "date": datetime.now(UTC).isoformat(),
+        "model": settings.llm_model,
+        "prompt": PROMPT_UNDER_TEST,
+        "system_prompt": system_prompt,
+        "top_p": TOP_P,
+        "max_tokens": MAX_TOKENS,
+        "results": results,
+    }
+    return experiment
 
-    print("\n" + "=" * 80)
-    print("ИТОГОВАЯ ТАБЛИЦА РЕЗУЛЬТАТОВ ДЛЯ ОТЧЕТА:")
-    print("=" * 80)
-    print("| № | Temperature | Длина (симв.) | Соблюдение формата | Краткие наблюдения |")
-    print("|---|-------------|---------------|---------------------|--------------------|")
-    for r in results:
-        print(f"| {r['run']} | {r['temp']:.1f} | {r['length']} | {r['format']} | {r['obs']} |")
-    print("=" * 80 + "\n")
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Провести эксперимент с temperature")
+    parser.add_argument("--env-file", default=".env")
+    parser.add_argument("--output", type=Path, help="Путь для JSON с сырыми результатами")
+    args = parser.parse_args()
+    experiment = asyncio.run(run_experiment(args.env_file))
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(experiment, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        print(f"Результаты сохранены: {args.output}")
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(run_experiment())
+    raise SystemExit(main())

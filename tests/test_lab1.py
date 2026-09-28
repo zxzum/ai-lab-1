@@ -245,6 +245,15 @@ async def test_context_truncation_preserves_order_and_current_query(fake_pool):
     assert [m["content"] for m in history_chars] == ["Сообщение 7", "Сообщение 8"]
 
 
+async def test_context_does_not_include_single_message_over_char_limit(fake_pool):
+    repo = StorageRepository(fake_pool)
+    await repo.add_message(55, "user", "x" * 100, "study")
+
+    history = await repo.get_dialog_history(55, "study", max_messages=10, max_chars=10)
+
+    assert history == []
+
+
 async def test_mode_switching_clears_history_and_saves_new_mode(
     fake_pool, test_settings, test_dispatcher
 ):
@@ -499,6 +508,59 @@ async def test_long_response_split_without_loss(fake_pool, test_settings, test_d
     assert reconstructed == long_text
 
 
+async def test_long_markdown_response_is_sent_without_markup(
+    fake_pool, test_settings, test_dispatcher
+):
+    bot = Bot(TOKEN)
+    bot.session = AsyncMock()
+    long_text = "```python\n" + ("x" * 5000) + "\n```"
+    llm_client = AsyncMock(spec=LLMClient)
+    llm_client.complete = AsyncMock(return_value=long_text)
+
+    await test_dispatcher.feed_update(
+        bot,
+        Update(update_id=1, message=create_message(user_id=10, text="Код")),
+        db=fake_pool,
+        settings=test_settings,
+        llm_client=llm_client,
+    )
+
+    sent_messages = [
+        call.args[1] for call in bot.session.call_args_list if isinstance(call.args[1], SendMessage)
+    ]
+    assert "".join(message.text for message in sent_messages) == long_text
+    assert all(message.parse_mode is None for message in sent_messages)
+
+
+async def test_llm_client_sends_experiment_parameters_and_usage():
+    class Response:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def json(self):
+            return {"choices": [{"message": {"content": "Ответ"}}], "usage": {"total_tokens": 7}}
+
+    class Session:
+        closed = False
+
+        def post(self, *_args, **kwargs):
+            self.kwargs = kwargs
+            return Response()
+
+    session = Session()
+    client = LLMClient(session=session)
+
+    assert await client.complete([], temperature=0.3, top_p=1.0, max_tokens=1000) == "Ответ"
+    assert session.kwargs["json"]["top_p"] == 1.0
+    assert session.kwargs["json"]["max_tokens"] == 1000
+    assert client.last_usage == {"total_tokens": 7}
+
+
 def test_split_message_utility():
     """Тестирование функции split_message на граничных случаях."""
     # Пустая строка
@@ -547,3 +609,42 @@ def test_markdown_to_telegram_html():
     fixed = markdown_to_telegram_html(unclosed)
     assert "<pre><code" in fixed
     assert "</code></pre>" in fixed
+
+
+def test_llm_proxy_fallback_and_validation(tmp_path):
+    """Проверка, что LLM_PROXY_URL берет TELEGRAM_PROXY_URL по умолчанию и валидируется."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        f"BOT_TOKEN={TOKEN}\nPOSTGRES_PASSWORD=db\nTELEGRAM_PROXY_URL=socks5://proxy:1080\n",
+        encoding="utf-8",
+    )
+    # 1. Fallback к TELEGRAM_PROXY_URL
+    s = Settings.load(env_file, environ={})
+    assert s.llm_proxy_url == "socks5://proxy:1080"
+
+    # 2. Явный LLM_PROXY_URL переопределяет TELEGRAM_PROXY_URL
+    s2 = Settings.load(
+        env_file,
+        environ={"LLM_PROXY_URL": "http://other:8080"},
+    )
+    assert s2.llm_proxy_url == "http://other:8080"
+
+    # 3. Некорректный LLM_PROXY_URL отклоняется с понятной ошибкой
+    with pytest.raises(ConfigError, match="LLM_PROXY_URL"):
+        Settings.load(
+            env_file,
+            environ={"LLM_PROXY_URL": "invalid-url"},
+        )
+
+
+async def test_llm_client_creates_proxy_connector():
+    """Проверка, что при передаче proxy в LLMClient создается ProxyConnector."""
+    client = LLMClient(proxy="socks5://proxy:1080")
+    try:
+        session = await client.get_session()
+        assert session.connector is not None
+        from aiohttp_socks import ProxyConnector
+
+        assert isinstance(session.connector, ProxyConnector)
+    finally:
+        await client.close()

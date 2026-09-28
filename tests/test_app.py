@@ -72,6 +72,19 @@ async def test_photo_does_not_match_text_handler():
     assert matches is False
 
 
+async def test_echo_does_not_match_group_text():
+    handler = router.message.handlers[0]
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(id=-42, type="group"),
+        from_user=User(id=42, is_bot=False, first_name="Студент"),
+        text="групповое сообщение",
+    )
+    matches, _ = await handler.check(message)
+    assert matches is False
+
+
 def test_settings_environment_overrides_file(tmp_path):
     # Arrange
     path = tmp_path / ".env"

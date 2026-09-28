@@ -27,18 +27,26 @@ class LLMClient:
         api_key: str = "",
         model: str = "gpt-4o-mini",
         timeout: float = 30.0,
+        proxy: str = "",
         session: aiohttp.ClientSession | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        self.proxy = proxy
         self._session = session
         self._owns_session = session is None
+        self.last_usage: dict | None = None
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            connector = None
+            if self.proxy:
+                from aiohttp_socks import ProxyConnector
+
+                connector = ProxyConnector.from_url(self.proxy)
+            self._session = aiohttp.ClientSession(connector=connector)
             self._owns_session = True
         return self._session
 
@@ -51,6 +59,8 @@ class LLMClient:
         messages: list[dict[str, str]],
         temperature: float = 0.7,
         model: str | None = None,
+        top_p: float | None = None,
+        max_tokens: int | None = None,
     ) -> str:
         """Отправляет запрос на генерацию ответа в OpenAI-совместимый API.
 
@@ -60,6 +70,7 @@ class LLMClient:
         request_id = uuid.uuid4().hex[:8]
         target_model = model or self.model
         start_time = time.monotonic()
+        self.last_usage = None
 
         logger.info(
             "LLM запрос начат: req_id=%s, model=%s, temperature=%.2f",
@@ -81,6 +92,10 @@ class LLMClient:
             "messages": messages,
             "temperature": temperature,
         }
+        if top_p is not None:
+            payload["top_p"] = top_p
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
 
         url = f"{self.base_url}/chat/completions"
         session = await self.get_session()
@@ -134,8 +149,16 @@ class LLMClient:
                         )
 
                     data = await response.json()
+                    if not isinstance(data, dict):
+                        raise LLMEmptyResponseError("Модель вернула некорректный ответ.")
+                    usage = data.get("usage")
+                    self.last_usage = usage if isinstance(usage, dict) else None
                     choices = data.get("choices")
-                    if not choices or not isinstance(choices, list):
+                    if (
+                        not choices
+                        or not isinstance(choices, list)
+                        or not isinstance(choices[0], dict)
+                    ):
                         logger.warning(
                             "LLM пустой ответ choices: req_id=%s, time=%.2fs",
                             request_id,
@@ -144,8 +167,10 @@ class LLMClient:
                         raise LLMEmptyResponseError("Модель вернула пустой ответ.")
 
                     message_obj = choices[0].get("message", {})
-                    content = message_obj.get("content", "")
-                    if not content or not content.strip():
+                    content = (
+                        message_obj.get("content", "") if isinstance(message_obj, dict) else ""
+                    )
+                    if not isinstance(content, str) or not content.strip():
                         logger.warning(
                             "LLM пустой текст ответа: req_id=%s, time=%.2fs",
                             request_id,

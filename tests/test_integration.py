@@ -15,7 +15,7 @@ import asyncpg
 import pytest
 
 from app.config import Settings
-from app.db import create_pool
+from app.db import create_pool, init_db
 from app.health import HealthState, health_result
 from scripts.common import CommandError, run_command
 
@@ -99,6 +99,8 @@ async def test_real_db_password_restart_health_and_persistence(database):
     task = asyncio.create_task(asyncio.Event().wait())
     state = HealthState(pool=pool, initialized=True, polling_task=task)
     try:
+        await init_db(pool)
+        assert await pool.fetchval("SELECT to_regclass('public.user_settings')") == "user_settings"
         await pool.execute("CREATE TABLE integration_probe (value text NOT NULL)")
         await pool.execute("INSERT INTO integration_probe VALUES ($1)", "Сохранилось 👋")
         # Act / Assert: реальное подключение и ошибка пароля.
