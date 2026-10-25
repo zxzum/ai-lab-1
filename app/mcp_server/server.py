@@ -1,5 +1,6 @@
 """MCP-сервер: описывает инструменты и делегирует работу модулям с логикой."""
 
+import datetime as dt
 import logging
 from typing import Annotated
 
@@ -9,6 +10,15 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field, StringConstraints
 
+from app.mcp_server.schedule import (
+    DaySchedule,
+    ScheduleUnavailableError,
+    day_schedule,
+    load_entries,
+    schedule_timezone,
+    today_in,
+    week_schedule,
+)
 from app.mcp_server.weather import WeatherResult, WeatherUpstreamError, fetch_weather
 
 logger = logging.getLogger("app.mcp_server")
@@ -33,6 +43,37 @@ async def get_weather(
     except WeatherUpstreamError as exc:
         logger.warning("weather upstream error: %s", exc)
         raise ToolError("Погодный сервис сейчас недоступен, попробуйте позже.") from exc
+
+
+@mcp.tool(annotations=READ_ONLY)
+def get_schedule(
+    date: Annotated[
+        str,
+        StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        Field(description="Дата в формате YYYY-MM-DD"),
+    ],
+) -> DaySchedule:
+    """Занятия на выбранную дату. Пустой список lessons означает, что занятий нет."""
+    try:
+        day = dt.date.fromisoformat(date)
+    except ValueError as exc:  # формат верный, но даты не существует, например 2026-02-30
+        raise ToolError("Такой даты не существует.") from exc
+    return day_schedule(_entries(), day, schedule_timezone())
+
+
+@mcp.resource("schedule://current-week", mime_type="application/json")
+def current_week() -> str:
+    """Расписание текущей недели (понедельник-воскресенье), сгруппированное по датам."""
+    timezone = schedule_timezone()
+    return week_schedule(_entries(), today_in(timezone), timezone).model_dump_json()
+
+
+def _entries():
+    try:
+        return load_entries()
+    except ScheduleUnavailableError as exc:
+        logger.warning("schedule error: %s", exc)
+        raise ToolError("Расписание сейчас недоступно.") from exc
 
 
 def forbid_extra_arguments(server: FastMCP) -> None:
