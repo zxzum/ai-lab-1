@@ -5,11 +5,17 @@ import logging
 from typing import Annotated
 
 import aiohttp
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field, StringConstraints
 
+from app.mcp_server.reminders import (
+    ReminderRefusedError,
+    ReminderResult,
+    ReminderStore,
+    parse_remind_at,
+)
 from app.mcp_server.schedule import (
     DaySchedule,
     ScheduleUnavailableError,
@@ -20,12 +26,16 @@ from app.mcp_server.schedule import (
     week_schedule,
 )
 from app.mcp_server.weather import WeatherResult, WeatherUpstreamError, fetch_weather
+from app.mcp_trust import read_trusted
 
 logger = logging.getLogger("app.mcp_server")
 
 mcp = FastMCP("student-assistant")
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
+WRITE_IDEMPOTENT = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True)
+
+store = ReminderStore()
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -59,6 +69,39 @@ def get_schedule(
     except ValueError as exc:  # формат верный, но даты не существует, например 2026-02-30
         raise ToolError("Такой даты не существует.") from exc
     return day_schedule(_entries(), day, schedule_timezone())
+
+
+@mcp.tool(annotations=WRITE_IDEMPOTENT)
+async def add_reminder(
+    text: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
+        Field(description="Текст напоминания"),
+    ],
+    remind_at: Annotated[
+        str,
+        Field(
+            description=(
+                "Будущий момент времени в ISO 8601 с явным смещением часового пояса, "
+                "например 2026-10-27T09:00:00+03:00. Передавай локальное время пользователя: "
+                "приложение само подставляет его часовой пояс и проверяет результат."
+            )
+        ),
+    ],
+    ctx: Context,
+) -> ReminderResult:
+    """Создание напоминания (изменение данных). Выполняется только после подтверждения."""
+    meta = ctx.request_context.meta
+    trusted = read_trusted(meta.model_dump() if meta else None)
+    if trusted is None:
+        # Владельца нельзя получить из аргументов: без подписанного контекста приложения отказ.
+        logger.warning("add_reminder refused: no trusted context")
+        raise ToolError("Нет доверенного контекста приложения: создание напоминания запрещено.")
+    try:
+        moment = parse_remind_at(remind_at, dt.datetime.now(dt.UTC))
+        return await store.create(trusted, text, moment)
+    except ReminderRefusedError as exc:
+        raise ToolError(str(exc)) from exc
 
 
 @mcp.resource("schedule://current-week", mime_type="application/json")

@@ -29,6 +29,7 @@ async def test_toolbox_discovers_tools_from_real_server(tmp_path):
         assert {t.name: t.read_only for t in toolbox.tools} == {
             "get_weather": True,
             "get_schedule": True,
+            "add_reminder": False,
         }
     finally:
         await toolbox.close()
@@ -49,7 +50,9 @@ async def test_unreachable_server_does_not_break_startup():
 def test_server_gets_only_its_own_settings(tmp_path):
     params = server_params(settings(tmp_path, SCHEDULE_TIMEZONE="Asia/Tokyo", LLM_API_KEY="k"))
 
-    assert params.env == {"SCHEDULE_TIMEZONE": "Asia/Tokyo"}
+    assert params.env["SCHEDULE_TIMEZONE"] == "Asia/Tokyo"
+    assert not any(k in params.env for k in ("BOT_TOKEN", "LLM_API_KEY"))
+    assert "k" not in params.env.values()
 
 
 def test_unknown_schedule_timezone_is_rejected(tmp_path):
