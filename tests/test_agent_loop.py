@@ -59,9 +59,6 @@ class FakeToolbox:
         self.available = available
         self.calls = []
 
-    async def ensure_started(self):
-        return self.available
-
     async def call_tool(self, name, arguments, meta=None):
         self.calls.append((name, arguments))
         result = self.results.pop(0)

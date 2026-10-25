@@ -54,6 +54,19 @@ class AgentOutcome:
     action: PendingAction | None = None
 
 
+def build_system_prompt(
+    mode_prompt: str, now: datetime, timezone: str | None, default_timezone: str, has_tools: bool
+) -> str:
+    """Инструкция режима + правила работы с инструментами + текущее время пользователя."""
+    shown = timezone or default_timezone
+    rules = AGENT_RULES.format(
+        now=describe_now(now, shown),
+        timezone=shown,
+        tz_note=("" if has_tools else NO_TOOLS_NOTE) + ("" if timezone else NO_TIMEZONE_NOTE),
+    )
+    return f"{mode_prompt}\n\n{rules}"
+
+
 def preview_text(action: PendingAction) -> str:
     args = action.arguments
     return (
@@ -109,18 +122,11 @@ class Agent:
                 return AgentOutcome("confirm", preview_text(existing), existing)
             return AgentOutcome("refused", "Этот запрос уже обработан.")
 
-        if not self.toolbox.available:
-            await self.toolbox.ensure_started()
         tools = {t.name: t for t in self.toolbox.tools}
 
         now = self.clock()
-        shown_zone = timezone or default_timezone
-        rules = AGENT_RULES.format(
-            now=describe_now(now, shown_zone),
-            timezone=shown_zone,
-            tz_note=("" if tools else NO_TOOLS_NOTE) + ("" if timezone else NO_TIMEZONE_NOTE),
-        )
-        messages: list[dict] = [{"role": "system", "content": f"{mode_prompt}\n\n{rules}"}]
+        system = build_system_prompt(mode_prompt, now, timezone, default_timezone, bool(tools))
+        messages: list[dict] = [{"role": "system", "content": system}]
         messages.extend(history)
         messages.append({"role": "user", "content": text})
         exposed = expose_tools(list(tools.values()))
