@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram.utils.token import TokenValidationError, validate_token
 from dotenv import dotenv_values
@@ -32,6 +33,8 @@ class Settings:
     llm_proxy_url: str = field(default="", repr=False)
     max_history_messages: int = 10
     max_history_chars: int = 4000
+    schedule_file: str = ""
+    schedule_timezone: str = "Europe/Moscow"
 
     def validate_llm(self) -> None:
         """Проверяет наличие обязательных настроек для обращения к LLM."""
@@ -142,6 +145,14 @@ class Settings:
         else:
             llm_proxy = proxy
 
+        schedule_tz = value("SCHEDULE_TIMEZONE", "Europe/Moscow")
+        try:
+            ZoneInfo(schedule_tz)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ConfigError(
+                "SCHEDULE_TIMEZONE: нужно имя зоны IANA, например Europe/Moscow."
+            ) from None
+
         return cls(
             bot_token=token,
             postgres_password=password,
@@ -159,4 +170,6 @@ class Settings:
             llm_proxy_url=llm_proxy,
             max_history_messages=positive_int("MAX_HISTORY_MESSAGES", "10"),
             max_history_chars=positive_int("MAX_HISTORY_CHARS", "4000"),
+            schedule_file=value("SCHEDULE_FILE"),
+            schedule_timezone=schedule_tz,
         )

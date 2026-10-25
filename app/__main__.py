@@ -12,6 +12,7 @@ from app.handlers.echo import router as echo_router
 from app.health import HealthState, start_health_server
 from app.llm.client import LLMClient
 from app.logging_setup import configure_logging
+from app.mcp_client.client import MCPToolbox, server_params
 from app.telegram import create_bot
 
 logger = logging.getLogger("app")
@@ -27,8 +28,10 @@ async def run(settings: Settings) -> None:
         timeout=settings.llm_timeout_seconds,
         proxy=settings.llm_proxy_url,
     )
+    toolbox = MCPToolbox(server_params(settings))
     runner = None
     try:
+        await toolbox.start()
         state.pool = await create_pool(settings)
         await init_db(state.pool)
         logger.info("PostgreSQL подключён: таблицы и индексы проверены.")
@@ -53,6 +56,7 @@ async def run(settings: Settings) -> None:
                 db=state.pool,
                 settings=settings,
                 llm_client=llm_client,
+                toolbox=toolbox,
                 allowed_updates=dispatcher.resolve_used_update_types(),
                 close_bot_session=False,
             )
@@ -68,6 +72,7 @@ async def run(settings: Settings) -> None:
             await runner.cleanup()
         await bot.session.close()
         await llm_client.close()
+        await toolbox.close()
         if state.pool:
             try:
                 async with asyncio.timeout(10):
