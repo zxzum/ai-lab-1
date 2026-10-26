@@ -132,9 +132,10 @@ async def handle_chat_message(
         await message.answer(reply_text, parse_mode=None)
         return
 
-    # Сохраняем в историю диалога только успешный диалог
-    await repo.add_message(user_id, "user", message.text, user_settings.mode)
-    await repo.add_message(user_id, "assistant", reply_text, user_settings.mode)
+    # Сохраняем в историю диалога только успешный диалог; обмены с инструментами не пишем
+    if outcome is None or (outcome.kind == "reply" and not outcome.from_tools):
+        await repo.add_message(user_id, "user", message.text, user_settings.mode)
+        await repo.add_message(user_id, "assistant", reply_text, user_settings.mode)
 
     if outcome is not None and outcome.kind == "confirm":
         await message.answer(

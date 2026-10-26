@@ -48,11 +48,16 @@ REFUSED_REPLY = "Не могу выполнить это действие: та�
 
 @dataclass
 class AgentOutcome:
-    """reply — ответ для истории; refused — отказ/ошибка; confirm — нужна кнопка."""
+    """reply — ответ; refused — отказ/ошибка; confirm — нужна кнопка.
+
+    from_tools: ответ построен на данных инструментов. Такие обмены в историю не пишутся:
+    модель копирует прошлые ответы с цифрами вместо нового вызова инструмента.
+    """
 
     kind: Literal["reply", "refused", "confirm"]
     text: str
     action: PendingAction | None = None
+    from_tools: bool = False
 
 
 def build_system_prompt(
@@ -163,7 +168,7 @@ class Agent:
             if not turn.tool_calls:
                 if not decided:
                     await audit("respond", reason="ответ без инструмента", execution="success")
-                return AgentOutcome("reply", turn.content)
+                return AgentOutcome("reply", turn.content, from_tools=mcp_calls > 0)
 
             messages.append(turn.assistant_message)
             for call in turn.tool_calls:

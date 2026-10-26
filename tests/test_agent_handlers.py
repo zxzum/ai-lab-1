@@ -110,6 +110,16 @@ async def test_study_mode_goes_through_agent_with_trusted_ids(monkeypatch, harne
     assert FakeStorage.saved == [(5, "user", "погода в Казани"), (5, "assistant", "В Казани +5°C")]
 
 
+async def test_tool_exchanges_are_not_saved_to_history(monkeypatch, harness):
+    feed, _ = harness
+    patch_agent(monkeypatch, AgentOutcome("reply", "В Казани +5°C", from_tools=True))
+
+    sent = await feed("погода в Казани")
+
+    assert "".join(m.text for m in sent) == "В Казани +5°C"
+    assert FakeStorage.saved == []  # иначе модель копирует прошлые цифры вместо вызова инструмента
+
+
 async def test_other_modes_keep_lab1_behaviour(monkeypatch, harness):
     feed, llm = harness
     FakeStorage.mode = "translate"
@@ -132,6 +142,7 @@ async def test_confirmation_is_sent_with_buttons_for_the_prepared_action(monkeyp
     buttons = sent.reply_markup.inline_keyboard[0]
     assert [b.text for b in buttons] == ["Подтвердить", "Отменить"]
     assert [b.callback_data for b in buttons] == [f"act:ok:{'a' * 32}", f"act:no:{'a' * 32}"]
+    assert FakeStorage.saved == []  # превью подтверждения тоже не пример для подражания
 
 
 async def test_refusal_is_shown_but_not_stored_in_history(monkeypatch, harness):
