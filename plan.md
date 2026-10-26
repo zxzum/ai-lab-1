@@ -32,5 +32,6 @@
 
 ### Смена модели
 `gemini-2.5-flash-lite` в боте иногда возвращала пустой ответ и теряла страну в `city`. На том же наборе:
-`google/gemini-2.5-flash` — routing 12/12, arguments 9/9; `openai/gpt-4.1-mini` — 10/12 и 6/9.
+`google/gemini-2.5-flash` — routing 12/12, arguments 9/9; `openai/gpt-4.1-mini` — 10/12 и 6/9; `deepseek/deepseek-v4.1-flash` — 9/12 и 3/9
+(на напоминания отвечает текстом вместо вызова инструмента).
 Модель по умолчанию заменена на `google/gemini-2.5-flash` (`.env.example`, `app/config.py`).
