@@ -111,6 +111,16 @@ async def test_qualifier_after_comma_narrows_candidates():
     assert result.weather.place.region == "Айдахо"
 
 
+async def test_several_qualifiers_after_commas_all_must_match():
+    geo = {"results": [place("Москва", "Москва"), place("Москва", "Айдахо", "США", "US")]}
+
+    ok = await fetch_weather(FakeSession(geo, FORECAST), "Москва, Айдахо, США")
+    none = await fetch_weather(FakeSession(geo, FORECAST), "Москва, Айдахо, Россия")
+
+    assert ok.status == "ok" and ok.weather.place.region == "Айдахо"
+    assert none.status == "not_found"
+
+
 async def test_exact_name_beats_derived_names():
     geo = {"results": [place("Новосибирск", "Новосибирская"), place("Новосибирское", "Сахалин")]}
     session = FakeSession(geo, FORECAST)

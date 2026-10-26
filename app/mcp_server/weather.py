@@ -92,10 +92,10 @@ async def _get_json(session: aiohttp.ClientSession, url: str, params: dict) -> d
     raise WeatherUpstreamError(f"погодный сервис недоступен: {type(last_error).__name__}")
 
 
-def _split_query(city: str) -> tuple[str, str]:
-    """'Москва, Idaho' -> ('Москва', 'idaho'); уточнение после запятой фильтрует варианты."""
-    name, _, qualifier = city.partition(",")
-    return name.strip(), qualifier.strip().casefold()
+def _split_query(city: str) -> tuple[str, list[str]]:
+    """'Москва, Айдахо, США' -> ('Москва', ['айдахо', 'сша']); уточнения фильтруют варианты."""
+    name, *qualifiers = (part.strip() for part in city.split(","))
+    return name, [q.casefold() for q in qualifiers if q]
 
 
 def _matches(item: dict, qualifier: str) -> bool:
@@ -109,7 +109,7 @@ def _place(item: dict) -> Place:
 
 
 async def fetch_weather(session: aiohttp.ClientSession, city: str) -> WeatherResult:
-    name, qualifier = _split_query(city)
+    name, qualifiers = _split_query(city)
     if not name:
         return WeatherResult(status="not_found")
 
@@ -117,8 +117,7 @@ async def fetch_weather(session: aiohttp.ClientSession, city: str) -> WeatherRes
         session, GEOCODING_URL, {"name": name, "count": 10, "language": "ru", "format": "json"}
     )
     found = geo.get("results") or []
-    if qualifier:
-        found = [item for item in found if _matches(item, qualifier)]
+    found = [item for item in found if all(_matches(item, q) for q in qualifiers)]
     if not found:
         return WeatherResult(status="not_found")
     # «Новосибирск» не неоднозначен из-за «Новосибирское»: точные имена в приоритете.
