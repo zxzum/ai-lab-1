@@ -305,3 +305,14 @@ async def test_second_empty_answer_is_reported():
 
     with pytest.raises(LLMEmptyResponseError):
         await run(llm, FakeToolbox([WEATHER]))
+
+
+async def test_answer_from_real_data_is_flagged_but_clarification_is_not():
+    def weather_turns():
+        return FakeLLM(asks(call("get_weather", city="Казань", rationale="r")), says("ответ"))
+
+    with_data, _ = await run(weather_turns(), FakeToolbox([WEATHER], [ok({"status": "ok"})]))
+    ambiguous, _ = await run(weather_turns(), FakeToolbox([WEATHER], [ok({"status": "ambiguous"})]))
+    failed, _ = await run(weather_turns(), FakeToolbox([WEATHER], [ToolResult(True, None, "сбой")]))
+
+    assert (with_data.from_tools, ambiguous.from_tools, failed.from_tools) == (True, False, False)

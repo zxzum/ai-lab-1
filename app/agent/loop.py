@@ -50,8 +50,9 @@ REFUSED_REPLY = "Не могу выполнить это действие: та�
 class AgentOutcome:
     """reply — ответ; refused — отказ/ошибка; confirm — нужна кнопка.
 
-    from_tools: ответ построен на данных инструментов. Такие обмены в историю не пишутся:
-    модель копирует прошлые ответы с цифрами вместо нового вызова инструмента.
+    from_tools: ответ построен на реальных данных инструментов. Такие обмены в историю не
+    пишутся: модель копирует прошлые ответы с цифрами вместо нового вызова инструмента.
+    Уточнения («какой из городов?») в историю пишутся, чтобы следующий ответ имел контекст.
     """
 
     kind: Literal["reply", "refused", "confirm"]
@@ -161,6 +162,7 @@ class Agent:
             )
 
         mcp_calls = 0
+        got_data = False  # были получены реальные данные (не ошибка и не «уточните город»)
         decided = False  # было ли уже записано решение о вызове инструмента
 
         for _ in range(MAX_LLM_ROUNDS):
@@ -168,7 +170,7 @@ class Agent:
             if not turn.tool_calls:
                 if not decided:
                     await audit("respond", reason="ответ без инструмента", execution="success")
-                return AgentOutcome("reply", turn.content, from_tools=mcp_calls > 0)
+                return AgentOutcome("reply", turn.content, from_tools=got_data)
 
             messages.append(turn.assistant_message)
             for call in turn.tool_calls:
@@ -240,6 +242,8 @@ class Agent:
                     execution="error" if result.is_error else "success",
                     **common,
                 )
+                data = result.data or {}
+                got_data = got_data or (not result.is_error and data.get("status", "ok") == "ok")
                 messages.append(_tool_message(call, name, result))
 
         return AgentOutcome("refused", "Не удалось завершить запрос. Попробуйте переформулировать.")
