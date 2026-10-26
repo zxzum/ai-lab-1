@@ -3,6 +3,8 @@
 import json
 from datetime import UTC, datetime
 
+import pytest
+
 from app.agent.loop import LIMIT_REPLY, NO_TIMEZONE_REPLY, UNAVAILABLE_REPLY, Agent
 from app.llm.client import LLMTurn, ToolCall
 from app.llm.exceptions import LLMEmptyResponseError
