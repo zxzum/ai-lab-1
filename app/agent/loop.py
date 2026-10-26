@@ -23,7 +23,8 @@ from app.agent.tools import (
     summarize_arguments,
     validate_arguments,
 )
-from app.llm.client import LLMClient, ToolCall
+from app.llm.client import LLMClient, LLMTurn, ToolCall
+from app.llm.exceptions import LLMEmptyResponseError
 from app.mcp_client.client import MCPToolbox, ToolResult, ToolUnavailableError
 from app.storage.agent_repository import AgentRepository, PendingAction
 
@@ -100,6 +101,14 @@ class Agent:
         self.repo = repo
         self.clock = clock
 
+    async def _next_turn(
+        self, messages: list[dict], exposed: list[dict], temperature: float
+    ) -> LLMTurn:
+        try:
+            return await self.llm.chat_with_tools(messages, exposed, temperature)
+        except LLMEmptyResponseError:  # модель иногда отвечает пустотой: один повтор
+            return await self.llm.chat_with_tools(messages, exposed, temperature)
+
     async def run(
         self,
         *,
@@ -150,7 +159,7 @@ class Agent:
         decided = False  # было ли уже записано решение о вызове инструмента
 
         for _ in range(MAX_LLM_ROUNDS):
-            turn = await self.llm.chat_with_tools(messages, exposed, temperature)
+            turn = await self._next_turn(messages, exposed, temperature)
             if not turn.tool_calls:
                 if not decided:
                     await audit("respond", reason="ответ без инструмента", execution="success")

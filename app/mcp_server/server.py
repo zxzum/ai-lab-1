@@ -90,7 +90,7 @@ async def add_reminder(
     ],
     ctx: Context,
 ) -> ReminderResult:
-    """Создание напоминания (изменение данных). Выполняется только после подтверждения."""
+    """Создание напоминания. Выполняется только после подтверждения пользователя."""
     meta = ctx.request_context.meta
     trusted = read_trusted(meta.model_dump() if meta else None)
     if trusted is None:

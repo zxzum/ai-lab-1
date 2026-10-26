@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from app.agent.loop import LIMIT_REPLY, NO_TIMEZONE_REPLY, UNAVAILABLE_REPLY, Agent
 from app.llm.client import LLMTurn, ToolCall
+from app.llm.exceptions import LLMEmptyResponseError
 from app.mcp_client.client import ToolInfo, ToolResult, ToolUnavailableError
 from app.storage.agent_repository import PendingAction
 
@@ -49,7 +50,10 @@ class FakeLLM:
 
     async def chat_with_tools(self, messages, tools, temperature):
         self.requests.append({"messages": list(messages), "tools": tools})
-        return self.turns.pop(0)
+        turn = self.turns.pop(0)
+        if isinstance(turn, Exception):
+            raise turn
+        return turn
 
 
 class FakeToolbox:
@@ -283,3 +287,19 @@ async def test_tool_error_is_passed_to_model_as_error():
     assert outcome.text == "Погодный сервис недоступен."
     assert json.loads(llm.requests[1]["messages"][-1]["content"])["error"].startswith("Погодный")
     assert repo.audit[0]["execution"] == "error"
+
+
+async def test_empty_model_answer_is_retried_once():
+    llm = FakeLLM(LLMEmptyResponseError("пусто"), says("Ответ после повтора"))
+
+    outcome, _ = await run(llm, FakeToolbox([WEATHER]))
+
+    assert outcome.text == "Ответ после повтора"
+    assert len(llm.requests) == 2
+
+
+async def test_second_empty_answer_is_reported():
+    llm = FakeLLM(LLMEmptyResponseError("пусто"), LLMEmptyResponseError("пусто"))
+
+    with pytest.raises(LLMEmptyResponseError):
+        await run(llm, FakeToolbox([WEATHER]))
