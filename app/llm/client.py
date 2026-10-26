@@ -58,6 +58,7 @@ class LLMClient:
         self._session = session
         self._owns_session = session is None
         self.last_usage: dict | None = None
+        self.last_finish_reason: str | None = None
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -132,6 +133,7 @@ class LLMClient:
         for raw in raw_calls if isinstance(raw_calls, list) else []:
             function = raw.get("function") if isinstance(raw, dict) else None
             if not isinstance(function, dict) or not isinstance(function.get("name"), str):
+                logger.warning("LLM некорректный вызов инструмента: req_id=%s", request_id)
                 raise LLMEmptyResponseError("Модель вернула некорректный вызов инструмента.")
             arguments = function.get("arguments") or "{}"
             if not isinstance(arguments, str):
@@ -141,6 +143,11 @@ class LLMClient:
         content = message_obj.get("content")
         content = content.strip() if isinstance(content, str) else ""
         if not calls and not content:
+            logger.warning(
+                "LLM пустой ход: req_id=%s, finish_reason=%s",
+                request_id,
+                self.last_finish_reason,
+            )
             raise LLMEmptyResponseError("Модель вернула пустой текст.")
         logger.info(
             "LLM ход завершен: req_id=%s, model=%s, time=%.2fs, tool_calls=%d, chars=%d",
@@ -168,6 +175,7 @@ class LLMClient:
         target_model = model or self.model
         start_time = time.monotonic()
         self.last_usage = None
+        self.last_finish_reason = None
         payload = {"model": target_model, **payload}
 
         logger.info(
@@ -247,13 +255,16 @@ class LLMClient:
                         or not isinstance(choices, list)
                         or not isinstance(choices[0], dict)
                     ):
+                        error = data.get("error")
                         logger.warning(
-                            "LLM пустой ответ choices: req_id=%s, time=%.2fs",
+                            "LLM пустой ответ choices: req_id=%s, time=%.2fs, provider_error=%s",
                             request_id,
                             duration,
+                            error.get("message") if isinstance(error, dict) else error,
                         )
                         raise LLMEmptyResponseError("Модель вернула пустой ответ.")
 
+                    self.last_finish_reason = choices[0].get("finish_reason")
                     message_obj = choices[0].get("message", {})
                     if not isinstance(message_obj, dict):
                         message_obj = {}
