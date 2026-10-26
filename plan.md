@@ -29,3 +29,8 @@
 обычным текстом, а не через `ask_clarification`. Ни v2, ни v3 это не исправили (v3 ухудшил другие
 запросы), изменения откатаны, в коде остаётся v1. Результаты: `docs/evaluation/results/`.
 Набор черновой: официальный `lab2-routing.json` не выдан.
+
+### Смена модели
+`gemini-2.5-flash-lite` в боте иногда возвращала пустой ответ и теряла страну в `city`. На том же наборе:
+`google/gemini-2.5-flash` — routing 12/12, arguments 9/9; `openai/gpt-4.1-mini` — 10/12 и 6/9.
+Модель по умолчанию заменена на `google/gemini-2.5-flash` (`.env.example`, `app/config.py`).
