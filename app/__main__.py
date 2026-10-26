@@ -6,12 +6,15 @@ from aiogram import Dispatcher
 
 from app.config import ConfigError, Settings
 from app.db import create_pool, init_db
+from app.handlers.agent import router as agent_router
 from app.handlers.chat import router as chat_router
 from app.handlers.commands import router as commands_router
 from app.handlers.echo import router as echo_router
 from app.health import HealthState, start_health_server
 from app.llm.client import LLMClient
 from app.logging_setup import configure_logging
+from app.mcp_client.client import MCPToolbox, server_params
+from app.mcp_trust import new_secret
 from app.telegram import create_bot
 
 logger = logging.getLogger("app")
@@ -27,8 +30,12 @@ async def run(settings: Settings) -> None:
         timeout=settings.llm_timeout_seconds,
         proxy=settings.llm_proxy_url,
     )
+    # Секрет подписи доверенного контекста живёт только в памяти бота и дочернего сервера.
+    mcp_secret = new_secret()
+    toolbox = MCPToolbox(server_params(settings, mcp_secret))
     runner = None
     try:
+        await toolbox.start()
         state.pool = await create_pool(settings)
         await init_db(state.pool)
         logger.info("PostgreSQL подключён: таблицы и индексы проверены.")
@@ -44,6 +51,7 @@ async def run(settings: Settings) -> None:
         logger.info("Telegram доступен. Бот @%s запускает polling.", me.username)
         dispatcher = Dispatcher()
         dispatcher.include_router(commands_router)
+        dispatcher.include_router(agent_router)
         dispatcher.include_router(chat_router)
         dispatcher.include_router(echo_router)
         runner = await start_health_server(state, settings.health_port)
@@ -53,6 +61,8 @@ async def run(settings: Settings) -> None:
                 db=state.pool,
                 settings=settings,
                 llm_client=llm_client,
+                toolbox=toolbox,
+                mcp_secret=mcp_secret,
                 allowed_updates=dispatcher.resolve_used_update_types(),
                 close_bot_session=False,
             )
@@ -68,6 +78,7 @@ async def run(settings: Settings) -> None:
             await runner.cleanup()
         await bot.session.close()
         await llm_client.close()
+        await toolbox.close()
         if state.pool:
             try:
                 async with asyncio.timeout(10):

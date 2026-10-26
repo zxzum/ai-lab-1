@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.config import Settings
 from app.llm.prompts import get_mode_name
+from app.mcp_client.client import MCPToolbox
 from app.storage.repository import StorageRepository
 
 ALLOWED_TEMPERATURES = {0.0, 0.3, 0.7, 1.0}
@@ -42,11 +43,33 @@ async def cmd_start(message: Message, db: asyncpg.Pool) -> None:
         "⚙️ Управление:\n"
         "• /settings — просмотр и изменение температуры генерации\n"
         "• /reset — сбросить историю диалога текущего пользователя\n"
+        "• /tools — действия, которые я могу выполнить через MCP-сервер\n"
+        "• /timezone <зона> — часовой пояс для напоминаний (например Europe/Moscow)\n"
+        "• /why — почему агент выбрал последнее действие\n"
         "• /start — показать эту справку\n\n"
         f"Текущий активный режим: {mode_name}\n"
+        "🛠 В режиме /study я могу узнать погоду, расписание занятий и создать "
+        "напоминание (с подтверждением).\n\n"
         "Отправь мне текстовое сообщение, чтобы начать диалог!"
     )
     await message.answer(text, parse_mode=None)
+
+
+def format_tools(toolbox: MCPToolbox) -> str:
+    """Список инструментов строится из данных, полученных от MCP-сервера."""
+    if not toolbox.available:
+        return "Инструменты сейчас недоступны."
+    lines = ["Доступные инструменты:"]
+    for tool in toolbox.tools:
+        summary = tool.description.strip().split(". ")[0].rstrip(".")
+        kind = "чтение" if tool.read_only else "изменение, нужно подтверждение"
+        lines.append(f"• {tool.name} — {summary} ({kind})")
+    return "\n".join(lines)
+
+
+async def cmd_tools(message: Message, toolbox: MCPToolbox) -> None:
+    """Показывает инструменты, обнаруженные у MCP-сервера."""
+    await message.answer(format_tools(toolbox), parse_mode=None)
 
 
 async def cmd_study(message: Message, db: asyncpg.Pool) -> None:
@@ -197,6 +220,7 @@ def create_commands_router() -> Router:
     r.message.register(cmd_code_review, Command("code_review"))
     r.message.register(cmd_reset, Command("reset"))
     r.message.register(cmd_settings, Command("settings"))
+    r.message.register(cmd_tools, Command("tools"))
     r.callback_query.register(callback_set_temp, F.data.startswith("set_temp:"))
     return r
 

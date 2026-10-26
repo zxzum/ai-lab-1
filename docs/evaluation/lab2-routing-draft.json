@@ -1,0 +1,19 @@
+{
+  "_comment": "Черновой набор из 12 запросов. Замените официальным docs/evaluation/lab2-routing.json, если он выдан: формат полей описан в scripts/eval_routing.py.",
+  "now": "2026-10-25T12:00:00+03:00",
+  "timezone": "Europe/Moscow",
+  "cases": [
+    {"id": 1, "query": "Какая сейчас погода в Казани?", "expected_action": "get_weather", "expected_args": {"city": "Казань"}},
+    {"id": 2, "query": "Сколько градусов в Санкт-Петербурге?", "expected_action": "get_weather", "expected_args": {"city": "Санкт-Петербург"}},
+    {"id": 3, "query": "Нужен ли зонт в Новосибирске сегодня?", "expected_action": "get_weather", "expected_args": {"city": "Новосибирск"}},
+    {"id": 4, "query": "Какие у меня пары завтра?", "expected_action": "get_schedule", "expected_args": {"date": "2026-10-26"}},
+    {"id": 5, "query": "Что по расписанию во вторник?", "expected_action": "get_schedule", "expected_args": {"date": "2026-10-27"}},
+    {"id": 6, "query": "Есть ли занятия 3 ноября?", "expected_action": "get_schedule", "expected_args": {"date": "2026-11-03"}},
+    {"id": 7, "query": "Напомни завтра в 9:00 сдать лабу по MCP", "expected_action": "add_reminder", "expected_args": {"text": "~лаб", "remind_at": "2026-10-26T09:00:00+03:00"}},
+    {"id": 8, "query": "Поставь напоминание на 28 октября в 18:30: позвонить в деканат", "expected_action": "add_reminder", "expected_args": {"text": "~деканат", "remind_at": "2026-10-28T18:30:00+03:00"}},
+    {"id": 9, "query": "Напомни послезавтра в 8 утра взять ноутбук", "expected_action": "add_reminder", "expected_args": {"text": "~ноутбук", "remind_at": "2026-10-27T08:00:00+03:00"}},
+    {"id": 10, "query": "Объясни, что такое рекурсия.", "expected_action": "respond", "expected_args": {}},
+    {"id": 11, "query": "Привет! Что ты умеешь?", "expected_action": "respond", "expected_args": {}},
+    {"id": 12, "query": "Какая погода?", "expected_action": "clarify", "expected_args": {}}
+  ]
+}

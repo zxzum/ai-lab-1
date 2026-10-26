@@ -175,6 +175,25 @@ tests/              примеры тестов обвязки
 docker build --platform linux/amd64 --no-cache -t itmo-tg-template-check .
 ```
 
+## Лабораторная 2: агент с MCP-инструментами
+
+Бот в режиме `/study` сам решает, ответить текстом или вызвать инструмент собственного
+MCP-сервера (`app/mcp_server`, запускается ботом как дочерний процесс по stdio):
+погода, расписание занятий и создание напоминания (только после подтверждения кнопкой).
+
+| Команда | Что делает |
+|---|---|
+| `/tools` | список инструментов, полученный от MCP-сервера |
+| `/timezone Europe/Moscow` | часовой пояс для напоминаний (без него напоминания не создаются) |
+| `/why` | почему агент выбрал последнее действие |
+
+Новые настройки в `.env`: `SCHEDULE_TIMEZONE`, `SCHEDULE_FILE` (необязательно). Таблицы
+(`reminders`, `pending_actions`, `agent_audit`) создаются при старте. Проверка сервера независимым
+клиентом: `npx @modelcontextprotocol/inspector python -m app.mcp_server` — `add_reminder` без
+доверенного контекста приложения вернёт отказ. Оценка маршрутизации:
+`python -m scripts.eval_routing --label v1 --dataset docs/evaluation/lab2-routing-draft.json`.
+Тесты на PostgreSQL: `RUN_INTEGRATION=1 python -m pytest -q` (нужен Docker).
+
 ## 7. Первый деплой в Yandex Cloud
 
 Подготовьте личный аккаунт Yandex Cloud, активный платёжный аккаунт и каталог. Нужны права на создание и удаление Compute/VPC-ресурсов в этом каталоге (например, роль `editor` на выделенном учебном каталоге) и доступные квоты на одну ВМ, диск и публичный IP. [Начало работы с yc](https://yandex.cloud/ru/docs/cli/quickstart).
